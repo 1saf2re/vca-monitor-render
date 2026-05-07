@@ -104,15 +104,21 @@ def monitor_loop():
     global check_count, last_check
     send_discord("[VCA監視Bot] 起動しました。" + str(CHECK_INTERVAL_SEC) + "秒ごとに監視を開始します。 起動時刻: " + start_time.strftime("%Y-%m-%d %H:%M JST"))
     while True:
-        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
-        check_count += 1
-        last_check   = now
-        print("\n[" + now + "] 第" + str(check_count) + "回チェック")
-        for name, url in TARGET_URLS.items():
-            available = check(name, url)
-            print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
-            if available:
-                send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + url + " 検知時刻: " + now)
+        try:
+            now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
+            check_count += 1
+            last_check   = now
+            print("\n[" + now + "] 第" + str(check_count) + "回チェック")
+            for name, url in TARGET_URLS.items():
+                try:
+                    available = check(name, url)
+                    print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
+                    if available:
+                        send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + url + " 検知時刻: " + now)
+                except Exception as e:
+                    print("[個別エラー] " + name + ": " + str(e))
+        except Exception as e:
+            print("[ループエラー] " + str(e))
         time.sleep(CHECK_INTERVAL_SEC)
 
 # ── gunicorn対応：モジュールロード時にスレッド起動 ────
