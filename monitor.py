@@ -1,8 +1,6 @@
 """
 VCA フリヴォル 在庫監視（Render常時起動版）
-- Flaskで最小限のWebサーバーを立ち上げ、Renderに「生きてる」と伝える
-- バックグラウンドスレッドで2分ごとにVCAサイトを監視
-- 在庫検知→Discord Webhook通知
+gunicorn対応：スレッドをモジュールロード時に起動
 """
 
 import os
@@ -15,7 +13,7 @@ from flask import Flask
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-CHECK_INTERVAL_SEC  = 1 * 60  # 1分
+CHECK_INTERVAL_SEC  = 60  # 1分
 
 TARGET_URLS = {
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
@@ -38,37 +36,37 @@ HEADERS = {
 
 JST = timezone(timedelta(hours=9))
 
-# ── Flask アプリ ───────────────────────────────────
-app = Flask(__name__)
-start_time = datetime.now(JST)
+# ── 状態管理 ───────────────────────────────────────
+start_time  = datetime.now(JST)
 check_count = 0
 last_check  = "未実行"
 
-@app.route("/test")
-def test_notification():
-    """ブラウザからアクセスするだけでDiscordにテスト通知を送る"""
-    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
-    send_discord("[VCA監視テスト] 通知の動作確認です。このメッセージが届いていれば完璧です！ 確認時刻: " + now)
-    return "<h2>テスト通知を送信しました</h2><p>Discordを確認してください。</p><p><a href='/'>ステータスページに戻る</a></p>"
+# ── Flask ─────────────────────────────────────────
+app = Flask(__name__)
 
 @app.route("/")
 def index():
-    """Renderのヘルスチェック兼ステータス確認ページ"""
     uptime = str(datetime.now(JST) - start_time).split(".")[0]
     return (
-        f"<h2>VCA在庫監視Bot 稼働中</h2>"
-        f"<p>起動時刻: {start_time.strftime('%Y-%m-%d %H:%M JST')}</p>"
-        f"<p>稼働時間: {uptime}</p>"
-        f"<p>チェック回数: {check_count}回</p>"
-        f"<p>最終チェック: {last_check}</p>"
-        f"<p>監視間隔: {CHECK_INTERVAL_SEC}秒</p>"
-        f"<p>監視対象: {list(TARGET_URLS.keys())}</p>"
+        "<h2>VCA在庫監視Bot 稼働中</h2>"
+        "<p>起動時刻: " + start_time.strftime("%Y-%m-%d %H:%M JST") + "</p>"
+        "<p>稼働時間: " + uptime + "</p>"
+        "<p>チェック回数: " + str(check_count) + "回</p>"
+        "<p>最終チェック: " + last_check + "</p>"
+        "<p>監視間隔: " + str(CHECK_INTERVAL_SEC) + "秒</p>"
+        "<p><a href='/test'>通知テストを送る</a></p>"
     )
 
+@app.route("/test")
+def test_notification():
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
+    send_discord("[VCA監視テスト] 通知の動作確認です。このメッセージが届いていれば完璧です！ 確認時刻: " + now)
+    return "<h2>テスト通知を送信しました</h2><p>Discordを確認してください。</p><a href='/'>戻る</a>"
+
 # ── 通知 ──────────────────────────────────────────
-def send_discord(message: str) -> None:
+def send_discord(message):
     if not DISCORD_WEBHOOK_URL:
-        print("[Discord未設定]", message)
+        print("[Discord未設定] " + message)
         return
     try:
         r = requests.post(
@@ -76,18 +74,17 @@ def send_discord(message: str) -> None:
             json={"content": message},
             timeout=10,
         )
-        print(f"[Discord送信] status={r.status_code}")
+        print("[Discord送信] status=" + str(r.status_code))
     except Exception as e:
-        print(f"[Discordエラー] {e}")
+        print("[Discordエラー] " + str(e))
 
 # ── 在庫チェック ───────────────────────────────────
-def check(name: str, url: str) -> bool:
+def check(name, url):
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         text = soup.get_text()
-
         buy_signals = ["カートに入れる", "Add to bag", "カートへ", "購入する", "add to bag"]
         if any(s.lower() in text.lower() for s in buy_signals):
             return True
@@ -97,42 +94,31 @@ def check(name: str, url: str) -> bool:
             return True
         return False
     except Exception as e:
-        print(f"[チェックエラー] {name}: {e}")
+        print("[チェックエラー] " + name + ": " + str(e))
         return False
 
-# ── 監視ループ（バックグラウンドスレッド）──────────────
+# ── 監視ループ ─────────────────────────────────────
 def monitor_loop():
     global check_count, last_check
-
-    # 起動通知
-    send_discord("[VCA監視Bot] 起動しました。2分ごとに監視を開始します。 起動時刻: " + datetime.now(JST).strftime("%Y-%m-%d %H:%M JST"))
-
+    send_discord("[VCA監視Bot] 起動しました。" + str(CHECK_INTERVAL_SEC) + "秒ごとに監視を開始します。 起動時刻: " + start_time.strftime("%Y-%m-%d %H:%M JST"))
     while True:
         now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
         check_count += 1
         last_check   = now
-        print(f"\n[{now}] 第{check_count}回チェック")
-
+        print("\n[" + now + "] 第" + str(check_count) + "回チェック")
         for name, url in TARGET_URLS.items():
             available = check(name, url)
-            print(f"  {'在庫あり！' if available else '在庫なし'} {name}")
-
+            print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
             if available:
-                msg = (
-                    "[VCA在庫出現！] " + name +
-                    " が購入できます！ " + url +
-                    " 検知時刻: " + now
-                )
-                send_discord(msg)
-
+                send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + url + " 検知時刻: " + now)
         time.sleep(CHECK_INTERVAL_SEC)
 
-# ── エントリーポイント ─────────────────────────────
-if __name__ == "__main__":
-    # 監視スレッドをバックグラウンドで起動
-    t = threading.Thread(target=monitor_loop, daemon=True)
-    t.start()
+# ── gunicorn対応：モジュールロード時にスレッド起動 ────
+# if __name__ == "__main__" の外に置くことで
+# gunicornのworkerプロセスでも確実に起動する
+_thread = threading.Thread(target=monitor_loop, daemon=True)
+_thread.start()
 
-    # FlaskサーバーをRenderが指定するポートで起動
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
