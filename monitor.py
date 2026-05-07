@@ -15,7 +15,7 @@ from flask import Flask
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-CHECK_INTERVAL_SEC  = 2 * 60  # 2分
+CHECK_INTERVAL_SEC  = 1 * 60  # 1分
 
 TARGET_URLS = {
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
@@ -44,6 +44,13 @@ start_time = datetime.now(JST)
 check_count = 0
 last_check  = "未実行"
 
+@app.route("/test")
+def test_notification():
+    """ブラウザからアクセスするだけでDiscordにテスト通知を送る"""
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
+    send_discord("[VCA監視テスト] 通知の動作確認です。このメッセージが届いていれば完璧です！ 確認時刻: " + now)
+    return "<h2>テスト通知を送信しました</h2><p>Discordを確認してください。</p><p><a href='/'>ステータスページに戻る</a></p>"
+
 @app.route("/")
 def index():
     """Renderのヘルスチェック兼ステータス確認ページ"""
@@ -54,7 +61,7 @@ def index():
         f"<p>稼働時間: {uptime}</p>"
         f"<p>チェック回数: {check_count}回</p>"
         f"<p>最終チェック: {last_check}</p>"
-        f"<p>監視間隔: {CHECK_INTERVAL_SEC // 60}分</p>"
+        f"<p>監視間隔: {CHECK_INTERVAL_SEC}秒</p>"
         f"<p>監視対象: {list(TARGET_URLS.keys())}</p>"
     )
 
