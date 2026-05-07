@@ -121,11 +121,22 @@ def monitor_loop():
             print("[ループエラー] " + str(e))
         time.sleep(CHECK_INTERVAL_SEC)
 
-# ── gunicorn対応：モジュールロード時にスレッド起動 ────
-# if __name__ == "__main__" の外に置くことで
-# gunicornのworkerプロセスでも確実に起動する
-_thread = threading.Thread(target=monitor_loop, daemon=True)
-_thread.start()
+# ── gunicorn対応：最初のリクエスト後にスレッド起動 ────
+# gunicornはfork後にworkerを起動するため
+# モジュールロード時に起動したスレッドはforkで死ぬ
+# 最初のHTTPリクエストが来た時点で起動することで確実に動く
+_monitor_started = False
+_monitor_lock    = threading.Lock()
+
+@app.before_request
+def ensure_monitor_running():
+    global _monitor_started
+    with _monitor_lock:
+        if not _monitor_started:
+            _monitor_started = True
+            t = threading.Thread(target=monitor_loop, daemon=True)
+            t.start()
+            print("[起動] 監視スレッドをリクエスト受信後に起動しました")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
