@@ -64,6 +64,8 @@ def test_notification():
     return "<h2>テスト通知を送信しました</h2><p>Discordを確認してください。</p><a href='/'>戻る</a>"
 
 # ── 通知 ──────────────────────────────────────────
+MENTION = "<@835744502672654369>"
+
 def send_discord(message):
     if not DISCORD_WEBHOOK_URL:
         print("[Discord未設定] " + message)
@@ -71,7 +73,7 @@ def send_discord(message):
     try:
         r = requests.post(
             DISCORD_WEBHOOK_URL,
-            json={"content": message},
+            json={"content": MENTION + " " + message},
             timeout=10,
         )
         print("[Discord送信] status=" + str(r.status_code))
