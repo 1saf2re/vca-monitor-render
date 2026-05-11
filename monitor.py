@@ -6,10 +6,12 @@ gunicorn対応：スレッドをモジュールロード時に起動
 import os
 import time
 import threading
-import requests
 import json
 from datetime import datetime, timezone, timedelta
 from flask import Flask
+from curl_cffi import requests  # ← 変更点：強力なブラウザ偽装ライブラリ
+import concurrent.futures       # ← 変更点：並列処理用
+import random
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
@@ -25,8 +27,6 @@ TARGET_URLS = {
     "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp0j600---frivole-earrings-mini-model.html",
     "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbm00---frivole-earrings-mini-model.html",
 }
-
-import random
 
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -97,7 +97,8 @@ def check(name, url):
     """
     json_url = url.replace(".html", ".productinfo.JP.json")
     try:
-        r = requests.get(json_url, headers=get_headers(), timeout=20)
+        # 変更点：impersonate="chrome" を追加し、タイムアウトを10秒に短縮
+        r = requests.get(json_url, headers=get_headers(), impersonate="chrome", timeout=10)
         r.raise_for_status()
         data = r.json()
         sellable = data.get("sellable", False)
@@ -118,22 +119,26 @@ def monitor_loop():
             check_count += 1
             last_check   = now
             print("\n[" + now + "] 第" + str(check_count) + "回チェック")
-            for name, url in TARGET_URLS.items():
-                try:
-                    available = check(name, url)
-                    print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
-                    if available:
-                        send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + url + " 検知時刻: " + now)
-                except Exception as e:
-                    print("[個別エラー] " + name + ": " + str(e))
+            
+            # 変更点：並列処理で6つのURLを同時にチェックする
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(TARGET_URLS)) as executor:
+                future_to_url = {executor.submit(check, name, url): name for name, url in TARGET_URLS.items()}
+                
+                for future in concurrent.futures.as_completed(future_to_url):
+                    name = future_to_url[future]
+                    try:
+                        available = future.result()
+                        print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
+                        if available:
+                            send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + TARGET_URLS[name] + " 検知時刻: " + now)
+                    except Exception as e:
+                        print("[個別エラー] " + name + ": " + str(e))
         except Exception as e:
             print("[ループエラー] " + str(e))
+        
         time.sleep(CHECK_INTERVAL_SEC)
 
 # ── gunicorn対応：最初のリクエスト後にスレッド起動 ────
-# gunicornはfork後にworkerを起動するため
-# モジュールロード時に起動したスレッドはforkで死ぬ
-# 最初のHTTPリクエストが来た時点で起動することで確実に動く
 _monitor_started = False
 _monitor_lock    = threading.Lock()
 
