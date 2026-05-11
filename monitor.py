@@ -18,7 +18,7 @@ CHECK_INTERVAL_SEC  = 60  # 1分
 TARGET_URLS = {
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
-    "フリヴォル スモール RG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65r00---frivole-earrings-small-model.html",
+    "フリヴォル スモール RG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
     "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
     "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
     "フリヴォル ミニ RG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp7rj00---frivole-earrings-mini-model.html",
