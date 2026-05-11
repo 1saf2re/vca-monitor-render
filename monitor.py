@@ -7,21 +7,23 @@ import os
 import time
 import threading
 import requests
-from bs4 import BeautifulSoup
+import json
 from datetime import datetime, timezone, timedelta
 from flask import Flask
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-CHECK_INTERVAL_SEC  = 60  # 1分
+CHECK_INTERVAL_SEC  = 30  # 30秒
 
 TARGET_URLS = {
+    # ── スモール（URL確定済み） ──────────────────
+    "フリヴォル スモール PG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
-    "フリヴォル スモール RG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
-    "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ RG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp7rj00---frivole-earrings-mini-model.html",
+    # ── ミニ（YGのみURL確定済み） ────────────────
+    "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp24200---frivole-earrings-mini-model.html",
+    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp0j600---frivole-earrings-mini-model.html",
+    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbm00---frivole-earrings-mini-model.html",
 }
 
 import random
@@ -89,19 +91,19 @@ def send_discord(message):
 
 # ── 在庫チェック ───────────────────────────────────
 def check(name, url):
+    """
+    HTMLではなくproductinfo.JP.jsonを直接取得し
+    sellable:true かつ stock:true で在庫確定と判定する
+    """
+    json_url = url.replace(".html", ".productinfo.JP.json")
     try:
-        r = requests.get(url, headers=get_headers(), timeout=20)
+        r = requests.get(json_url, headers=get_headers(), timeout=20)
         r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        text = soup.get_text()
-        buy_signals = ["ショッピングバッグに入れる", "ショッピングバッグに追加", "バッグに入れる", "カートに入れる", "Add to bag", "add to bag", "カートへ", "購入する", "add to shopping bag"]
-        if any(s.lower() in text.lower() for s in buy_signals):
-            return True
-        if soup.find(attrs={"data-action": "add-to-cart"}):
-            return True
-        if soup.find(attrs={"class": lambda c: c and "add-to-cart" in " ".join(c)}):
-            return True
-        return False
+        data = r.json()
+        sellable = data.get("sellable", False)
+        stock    = data.get("stock",    False)
+        print("    JSON取得成功: sellable=" + str(sellable) + " stock=" + str(stock))
+        return sellable and stock
     except Exception as e:
         print("[チェックエラー] " + name + ": " + str(e))
         return False
