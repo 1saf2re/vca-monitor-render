@@ -97,16 +97,23 @@ def check(name, url):
     """
     json_url = url.replace(".html", ".productinfo.JP.json")
     try:
-        # 変更点：impersonate="chrome" を追加し、タイムアウトを10秒に短縮
         r = requests.get(json_url, headers=get_headers(), impersonate="chrome", timeout=10)
         r.raise_for_status()
-        data = r.json()
+        
+        # ▼ 追加：HTMLが返ってきた（URLが間違っている）場合のエラーを綺麗に回避する
+        try:
+            data = r.json()
+        except json.JSONDecodeError:
+            print("  [警告] " + name + ": URLが無効か、ページが存在しません（HTML応答）")
+            return False
+
         sellable = data.get("sellable", False)
         stock    = data.get("stock",    False)
         print("    JSON取得成功: sellable=" + str(sellable) + " stock=" + str(stock))
         return sellable and stock
+        
     except Exception as e:
-        print("[チェックエラー] " + name + ": " + str(e))
+        print("[通信エラー] " + name + ": " + str(e))
         return False
 
 # ── 監視ループ ─────────────────────────────────────
