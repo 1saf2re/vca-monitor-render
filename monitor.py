@@ -94,7 +94,7 @@ def check(name, url):
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         text = soup.get_text()
-        buy_signals = ["カートに入れる", "Add to bag", "カートへ", "購入する", "add to bag"]
+        buy_signals = ["ショッピングバッグに入れる", "ショッピングバッグに追加", "バッグに入れる", "カートに入れる", "Add to bag", "add to bag", "カートへ", "購入する", "add to shopping bag"]
         if any(s.lower() in text.lower() for s in buy_signals):
             return True
         if soup.find(attrs={"data-action": "add-to-cart"}):
