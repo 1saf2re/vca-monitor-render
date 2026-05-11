@@ -1,6 +1,5 @@
 """
-VCA フリヴォル 在庫監視（Render常時起動版）
-gunicorn対応：スレッドをモジュールロード時に起動
+VCA フリヴォル 在庫監視（Render常時起動版 / 真の在庫キャッチ完全版）
 """
 
 import os
@@ -9,23 +8,22 @@ import threading
 import json
 from datetime import datetime, timezone, timedelta
 from flask import Flask
-from curl_cffi import requests  # ← 変更点：強力なブラウザ偽装ライブラリ
-import concurrent.futures       # ← 変更点：並列処理用
+from curl_cffi import requests
+import concurrent.futures
 import random
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 CHECK_INTERVAL_SEC  = 30  # 30秒
 
+# ▼ 判明した正しい品番(SKU)でURLを修正しました
 TARGET_URLS = {
-    # ── スモール（URL確定済み） ──────────────────
     "フリヴォル スモール PG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
-    # ── ミニ（YGのみURL確定済み） ────────────────
     "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp24200---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp0j600---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbm00---frivole-earrings-mini-model.html",
+    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html", # 修正済み
+    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html", # 修正済み
 }
 
 USER_AGENTS = [
@@ -40,7 +38,7 @@ def get_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept-Language": "ja-JP,ja;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/json,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
 
 JST = timezone(timedelta(hours=9))
@@ -89,27 +87,37 @@ def send_discord(message):
     except Exception as e:
         print("[Discordエラー] " + str(e))
 
-# ── 在庫チェック ───────────────────────────────────
+# ── 在庫チェック（真の在庫取得版） ───────────────────
 def check(name, url):
-    """
-    HTMLではなくproductinfo.JP.jsonを直接取得し
-    sellable:true かつ stock:true で在庫確定と判定する
-    """
     json_url = url.replace(".html", ".productinfo.JP.json")
+    
+    # ▼ キャッシュバスター：CDN(Akamai)の古いキャッシュを無視し、最新の在庫を引き出す
+    timestamp = int(time.time() * 1000)
+    nocache_url = f"{json_url}?_={timestamp}"
+    
     try:
-        r = requests.get(json_url, headers=get_headers(), impersonate="chrome", timeout=10)
+        r = requests.get(nocache_url, headers=get_headers(), impersonate="chrome", timeout=10)
         r.raise_for_status()
         
-        # ▼ 追加：HTMLが返ってきた（URLが間違っている）場合のエラーを綺麗に回避する
         try:
             data = r.json()
         except json.JSONDecodeError:
             print("  [警告] " + name + ": URLが無効か、ページが存在しません（HTML応答）")
             return False
 
-        sellable = data.get("sellable", False)
-        stock    = data.get("stock",    False)
-        print("    JSON取得成功: sellable=" + str(sellable) + " stock=" + str(stock))
+        if not data:
+            return False
+
+        # ▼ 最重要修正：JSONのトップレベルキー（品番）の中にある sellable と stock を取得する
+        # list(data.values())[0] で、一番最初の品番オブジェクトの中身を取り出します
+        product_info = list(data.values())[0]
+        
+        sellable = product_info.get("sellable", False)
+        stock    = product_info.get("stock",    False)
+        
+        print(f"    [{name}] 取得成功: sellable={sellable} / stock={stock}")
+        
+        # 両方がTrueの場合のみ在庫ありと判定
         return sellable and stock
         
     except Exception as e:
@@ -127,7 +135,6 @@ def monitor_loop():
             last_check   = now
             print("\n[" + now + "] 第" + str(check_count) + "回チェック")
             
-            # 変更点：並列処理で6つのURLを同時にチェックする
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(TARGET_URLS)) as executor:
                 future_to_url = {executor.submit(check, name, url): name for name, url in TARGET_URLS.items()}
                 
@@ -145,7 +152,7 @@ def monitor_loop():
         
         time.sleep(CHECK_INTERVAL_SEC)
 
-# ── gunicorn対応：最初のリクエスト後にスレッド起動 ────
+# ── gunicorn対応 ───────────────────────────────────
 _monitor_started = False
 _monitor_lock    = threading.Lock()
 
