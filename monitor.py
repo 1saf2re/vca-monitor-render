@@ -1,5 +1,5 @@
 """
-VCA フリヴォル 在庫監視（Render常時起動版 / 真の在庫キャッチ完全版）
+VCA フリヴォル 在庫監視（Render常時起動版 / 連続通知スパム防止版）
 """
 
 import os
@@ -16,14 +16,13 @@ import random
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 CHECK_INTERVAL_SEC  = 30  # 30秒
 
-# ▼ 判明した正しい品番(SKU)でURLを修正しました
 TARGET_URLS = {
     "フリヴォル スモール PG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
     "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp24200---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html", # 修正済み
-    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html", # 修正済み
+    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
+    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
 }
 
 USER_AGENTS = [
@@ -47,6 +46,9 @@ JST = timezone(timedelta(hours=9))
 start_time  = datetime.now(JST)
 check_count = 0
 last_check  = "未実行"
+
+# ▼ 新規追加：各アイテムの前回の在庫状態を記憶する辞書（初期値はすべてFalse）
+previous_stock_state = {name: False for name in TARGET_URLS.keys()}
 
 # ── Flask ─────────────────────────────────────────
 app = Flask(__name__)
@@ -87,11 +89,9 @@ def send_discord(message):
     except Exception as e:
         print("[Discordエラー] " + str(e))
 
-# ── 在庫チェック（真の在庫取得版） ───────────────────
+# ── 在庫チェック ───────────────────────────────────
 def check(name, url):
     json_url = url.replace(".html", ".productinfo.JP.json")
-    
-    # ▼ キャッシュバスター：CDN(Akamai)の古いキャッシュを無視し、最新の在庫を引き出す
     timestamp = int(time.time() * 1000)
     nocache_url = f"{json_url}?_={timestamp}"
     
@@ -108,16 +108,10 @@ def check(name, url):
         if not data:
             return False
 
-        # ▼ 最重要修正：JSONのトップレベルキー（品番）の中にある sellable と stock を取得する
-        # list(data.values())[0] で、一番最初の品番オブジェクトの中身を取り出します
         product_info = list(data.values())[0]
-        
         sellable = product_info.get("sellable", False)
         stock    = product_info.get("stock",    False)
         
-        print(f"    [{name}] 取得成功: sellable={sellable} / stock={stock}")
-        
-        # 両方がTrueの場合のみ在庫ありと判定
         return sellable and stock
         
     except Exception as e:
@@ -126,8 +120,9 @@ def check(name, url):
 
 # ── 監視ループ ─────────────────────────────────────
 def monitor_loop():
-    global check_count, last_check
-    send_discord("[VCA監視Bot] 起動しました。" + str(CHECK_INTERVAL_SEC) + "秒ごとに監視を開始します。 起動時刻: " + start_time.strftime("%Y-%m-%d %H:%M JST"))
+    global check_count, last_check, previous_stock_state
+    send_discord("[VCA監視Bot] 起動しました。" + str(CHECK_INTERVAL_SEC) + "秒ごとに監視を開始します。")
+    
     while True:
         try:
             now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
@@ -142,9 +137,24 @@ def monitor_loop():
                     name = future_to_url[future]
                     try:
                         available = future.result()
-                        print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
+                        
+                        # ▼ 新規追加：状態変化の検知ロジック
+                        was_available_last_time = previous_stock_state[name]
+                        
                         if available:
-                            send_discord("[VCA在庫出現！] " + name + " が購入できます！ " + TARGET_URLS[name] + " 検知時刻: " + now)
+                            if not was_available_last_time:
+                                # 前回Falseで今回Trueなら新規入荷として通知
+                                print(f"  [新規入荷！] {name}")
+                                send_discord(f"[VCA在庫出現！] {name} が購入可能な状態です！(※ゴースト在庫の可能性あり) \n{TARGET_URLS[name]} \n検知時刻: {now}")
+                            else:
+                                # 前回もTrueなら継続中として通知はスキップ（ログだけ出す）
+                                print(f"  [継続] 在庫あり維持（通知スキップ）: {name}")
+                        else:
+                            print(f"  [在庫なし] {name}")
+                        
+                        # 今回の取得結果を「次回の前回値」として記憶を上書きする
+                        previous_stock_state[name] = available
+
                     except Exception as e:
                         print("[個別エラー] " + name + ": " + str(e))
         except Exception as e:
