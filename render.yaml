@@ -3,7 +3,7 @@ services:
     name: vca-monitor
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn monitor:app
+    startCommand: gunicorn monitor:app --workers 1 --threads 2
     envVars:
       - key: DISCORD_WEBHOOK_URL
         sync: false
