@@ -1,0 +1,33 @@
+import concurrent.futures
+
+# ── 監視ループ ─────────────────────────────────────
+def monitor_loop():
+    global check_count, last_check
+    send_discord("[VCA監視Bot] 起動しました。" + str(CHECK_INTERVAL_SEC) + "秒ごとに監視を開始します。 起動時刻: " + start_time.strftime("%Y-%m-%d %H:%M JST"))
+    while True:
+        try:
+            now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S JST")
+            check_count += 1
+            last_check   = now
+            print("\n[" + now + "] 第" + str(check_count) + "回チェック")
+
+            # ThreadPoolExecutorを使って6URLを同時にチェックする
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(TARGET_URLS)) as executor:
+                # タスクの登録
+                future_to_url = {executor.submit(check, name, url): name for name, url in TARGET_URLS.items()}
+                
+                # 結果の受け取り
+                for future in concurrent.futures.as_completed(future_to_url):
+                    name = future_to_url[future]
+                    try:
+                        available = future.result()
+                        print("  " + ("在庫あり！ " if available else "在庫なし  ") + name)
+                        if available:
+                            send_discord("[VCA在庫出現！] " + name + " が購入できます！ 検知時刻: " + now)
+                    except Exception as e:
+                        print("[個別エラー] " + name + ": " + str(e))
+                        
+        except Exception as e:
+            print("[ループエラー] " + str(e))
+            
+        time.sleep(CHECK_INTERVAL_SEC)
