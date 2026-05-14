@@ -17,14 +17,21 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
 CHECK_INTERVAL_SEC  = 30  # 30秒
 
 TARGET_URLS = {
+    # ── スモールモデル ──────────────────────────
     "フリヴォル スモール PG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpfbk00---frivole-earrings-small-model.html",
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
-    "フリヴォル ミニ YG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarp24200---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ WG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
-    "フリヴォル ミニ PG":    "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
+    
+    # ── ミニ・ラージモデル（ターゲット修正完了） ──────
+    # ※ VCARPJMN00：ミニ YG（中央1石ダイヤ）
+    "フリヴォル ミニ YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
+    
+    # ※ VCARB65900：ラージ YG
+    "フリヴォル ラージ YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65900---frivole-earrings-large-model.html",
+    
+    # ▼ 引き続きミニWGも監視する場合は残す（不要ならこの1行を削除してください）
+    "フリヴォル ミニ WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
 }
-
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
