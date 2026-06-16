@@ -149,10 +149,15 @@ def monitor_loop():
                         was_available_last_time = previous_stock_state[name]
                         
                         if available:
-                            if not was_available_last_time:
-                                # 前回Falseで今回Trueなら新規入荷として通知
-                                print(f"  [新規入荷！] {name}")
-                                send_discord(f"[VCA在庫出現！] {name} が購入可能な状態です！(※ゴースト在庫の可能性あり) \n{TARGET_URLS[name]} \n検知時刻: {now}")
+                           if not was_available_last_time:
+    # 前回Falseで今回Trueなら新規入荷として通知
+    print(f"  [新規入荷！] {name}")
+    
+    # ▼ ここを追加・変更：URLの末尾に現在の「秒」までの数字をくっつける
+    timestamp = int(time.time())
+    nocache_url = f"{TARGET_URLS[name]}?t={timestamp}"
+    
+    send_discord(f"[VCA在庫出現！] {name} が購入可能な状態です！(※ゴースト在庫の可能性あり) \n{nocache_url} \n検知時刻: {now}")
                             else:
                                 # 前回もTrueなら継続中として通知はスキップ（ログだけ出す）
                                 print(f"  [継続] 在庫あり維持（通知スキップ）: {name}")
