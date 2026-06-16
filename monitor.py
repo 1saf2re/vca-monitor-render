@@ -14,7 +14,7 @@ import random
 
 # ── 設定 ──────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL", "")
-CHECK_INTERVAL_SEC  = 30  # 30秒
+CHECK_INTERVAL_SEC  = 20  # 20秒
 
 TARGET_URLS = {
     # ── スモールモデル ──────────────────────────
