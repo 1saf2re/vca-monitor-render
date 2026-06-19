@@ -1,5 +1,5 @@
 """
-VCA フリヴォル 在庫監視（Render常時起動版 / 連続通知スパム防止版）
+VCA フリヴォル 在庫監視（Render常時起動版 / 連続通知スパム防止版 / キャッシュ対策URL版）
 """
 
 import os
@@ -22,16 +22,12 @@ TARGET_URLS = {
     "フリヴォル スモール YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65700---frivole-earrings-small-model.html",
     "フリヴォル スモール WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcard80200---frivole-earrings-small-model.html",
     
-    # ── ミニ・ラージモデル（ターゲット修正完了） ──────
-    # ※ VCARPJMN00：ミニ YG（中央1石ダイヤ）
+    # ── ミニ・ラージモデル ──────────────────────
     "フリヴォル ミニ YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmn00---frivole-earrings-mini-model.html",
-    
-    # ※ VCARB65900：ラージ YG
     "フリヴォル ラージ YG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarb65900---frivole-earrings-large-model.html",
-    
-    # ▼ 引き続きミニWGも監視する場合は残す（不要ならこの1行を削除してください）
     "フリヴォル ミニ WG": "https://www.vancleefarpels.com/jp/ja/collections/jewelry/flora/frivole/vcarpjmo00---frivole-earrings-mini-model.html",
 }
+
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -54,7 +50,7 @@ start_time  = datetime.now(JST)
 check_count = 0
 last_check  = "未実行"
 
-# ▼ 新規追加：各アイテムの前回の在庫状態を記憶する辞書（初期値はすべてFalse）
+# 各アイテムの前回の在庫状態を記憶する辞書（初期値はすべてFalse）
 previous_stock_state = {name: False for name in TARGET_URLS.keys()}
 
 # ── Flask ─────────────────────────────────────────
@@ -145,26 +141,25 @@ def monitor_loop():
                     try:
                         available = future.result()
                         
-                        # ▼ 新規追加：状態変化の検知ロジック
                         was_available_last_time = previous_stock_state[name]
                         
                         if available:
-                           if not was_available_last_time:
-    # 前回Falseで今回Trueなら新規入荷として通知
-    print(f"  [新規入荷！] {name}")
-    
-    # ▼ ここを追加・変更：URLの末尾に現在の「秒」までの数字をくっつける
-    timestamp = int(time.time())
-    nocache_url = f"{TARGET_URLS[name]}?t={timestamp}"
-    
-    send_discord(f"[VCA在庫出現！] {name} が購入可能な状態です！(※ゴースト在庫の可能性あり) \n{nocache_url} \n検知時刻: {now}")
+                            if not was_available_last_time:
+                                # 前回Falseで今回Trueなら新規入荷として通知
+                                print(f"  [新規入荷！] {name}")
+                                
+                                # 【キャッシュ対策】URLの末尾に現在のタイムスタンプを強制付与
+                                timestamp_sec = int(time.time())
+                                nocache_url = f"{TARGET_URLS[name]}?t={timestamp_sec}"
+                                
+                                send_discord(f"[VCA在庫出現！] {name} が購入可能な状態です！(※ゴースト在庫の可能性あり) \n{nocache_url} \n検知時刻: {now}")
                             else:
                                 # 前回もTrueなら継続中として通知はスキップ（ログだけ出す）
                                 print(f"  [継続] 在庫あり維持（通知スキップ）: {name}")
                         else:
                             print(f"  [在庫なし] {name}")
                         
-                        # 今回の取得結果を「次回の前回値」として記憶を上書きする
+                        # 今回の取得結果を「次回の前回値」として記憶
                         previous_stock_state[name] = available
 
                     except Exception as e:
